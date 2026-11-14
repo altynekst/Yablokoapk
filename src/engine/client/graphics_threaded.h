@@ -992,7 +992,11 @@ public:
 	{
 		CCommandBuffer::SPoint Center;
 
-		dbg_assert(m_Drawing == EDrawing::QUADS, "called Graphics()->QuadsDrawTL without begin");
+		if(m_Drawing != EDrawing::QUADS)
+		{
+				// Yabloko hotfix: skip a stray draw instead of crashing
+				return;
+		}
 
 		if(g_Config.m_GfxQuadAsTriangle && !m_GLUseTrianglesAsQuad)
 		{

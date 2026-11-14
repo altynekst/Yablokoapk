@@ -225,21 +225,35 @@ void CGraphics_Threaded::GetScreen(float *pTopLeftX, float *pTopLeftY, float *pB
 
 void CGraphics_Threaded::LinesBegin()
 {
-	dbg_assert(m_Drawing == EDrawing::NONE, "called Graphics()->LinesBegin twice");
+	if(m_Drawing != EDrawing::NONE)
+	{
+		// Yabloko hotfix: auto-close a stale open batch instead of crashing
+		dbg_msg("graphics", "LinesBegin while a batch is open, auto-recovering");
+		FlushVertices(false);
+		m_Drawing = EDrawing::NONE;
+	}
 	m_Drawing = EDrawing::LINES;
 	SetColor(1, 1, 1, 1);
 }
 
 void CGraphics_Threaded::LinesEnd()
 {
-	dbg_assert(m_Drawing == EDrawing::LINES, "called Graphics()->LinesEnd without begin");
+	if(m_Drawing != EDrawing::LINES)
+	{
+		// Yabloko hotfix: skip a stray end instead of crashing
+		return;
+	}
 	FlushVertices();
 	m_Drawing = EDrawing::NONE;
 }
 
 void CGraphics_Threaded::LinesDraw(const CLineItem *pArray, size_t Num)
 {
-	dbg_assert(m_Drawing == EDrawing::LINES, "called Graphics()->LinesDraw without begin");
+	if(m_Drawing != EDrawing::LINES)
+	{
+		// Yabloko hotfix: skip a stray draw instead of crashing
+		return;
+	}
 
 	size_t VertexIndex = m_NumVertices;
 	for(size_t i = 0; i < Num; ++i)
@@ -728,7 +742,11 @@ void CGraphics_Threaded::ScreenshotDirect(bool *pSwapped)
 
 void CGraphics_Threaded::TextureSet(CTextureHandle TextureId)
 {
-	dbg_assert(m_Drawing == EDrawing::NONE, "called Graphics()->TextureSet within begin");
+	if(m_Drawing != EDrawing::NONE)
+	{
+		// Yabloko hotfix: ignore a texture switch inside a batch instead of crashing
+		return;
+	}
 	dbg_assert(!TextureId.IsValid() || m_vTextureIndices[TextureId.Id()] == -1, "Texture handle was not invalid, but also did not correlate to an existing texture.");
 	m_State.m_Texture = TextureId.Id();
 }
@@ -746,7 +764,13 @@ void CGraphics_Threaded::Clear(float r, float g, float b, bool ForceClearNow)
 
 void CGraphics_Threaded::QuadsBegin()
 {
-	dbg_assert(m_Drawing == EDrawing::NONE, "called Graphics()->QuadsBegin twice");
+	if(m_Drawing != EDrawing::NONE)
+	{
+		// Yabloko hotfix: auto-close a stale open batch instead of crashing
+		dbg_msg("graphics", "QuadsBegin while a batch is open, auto-recovering");
+		FlushVertices(false);
+		m_Drawing = EDrawing::NONE;
+	}
 	m_Drawing = EDrawing::QUADS;
 
 	QuadsSetSubset(0, 0, 1, 1);
@@ -756,7 +780,12 @@ void CGraphics_Threaded::QuadsBegin()
 
 void CGraphics_Threaded::QuadsEnd()
 {
-	dbg_assert(m_Drawing == EDrawing::QUADS, "called Graphics()->QuadsEnd without begin");
+	if(m_Drawing != EDrawing::QUADS)
+	{
+		// Yabloko hotfix: skip a stray end instead of crashing
+		dbg_msg("graphics", "QuadsEnd without begin, skipped");
+		return;
+	}
 	FlushVertices();
 	m_Drawing = EDrawing::NONE;
 }
@@ -768,14 +797,24 @@ void CGraphics_Threaded::QuadsTex3DBegin()
 
 void CGraphics_Threaded::QuadsTex3DEnd()
 {
-	dbg_assert(m_Drawing == EDrawing::QUADS, "called Graphics()->QuadsEnd without begin");
+	if(m_Drawing != EDrawing::QUADS)
+	{
+		// Yabloko hotfix: skip a stray end instead of crashing
+		return;
+	}
 	FlushVerticesTex3D();
 	m_Drawing = EDrawing::NONE;
 }
 
 void CGraphics_Threaded::TrianglesBegin()
 {
-	dbg_assert(m_Drawing == EDrawing::NONE, "called Graphics()->TrianglesBegin twice");
+	if(m_Drawing != EDrawing::NONE)
+	{
+		// Yabloko hotfix: auto-close a stale open batch instead of crashing
+		dbg_msg("graphics", "TrianglesBegin while a batch is open, auto-recovering");
+		FlushVertices(false);
+		m_Drawing = EDrawing::NONE;
+	}
 	m_Drawing = EDrawing::TRIANGLES;
 
 	QuadsSetSubset(0, 0, 1, 1);
@@ -785,14 +824,23 @@ void CGraphics_Threaded::TrianglesBegin()
 
 void CGraphics_Threaded::TrianglesEnd()
 {
-	dbg_assert(m_Drawing == EDrawing::TRIANGLES, "called Graphics()->TrianglesEnd without begin");
+	if(m_Drawing != EDrawing::TRIANGLES)
+	{
+		// Yabloko hotfix: skip a stray end instead of crashing
+		dbg_msg("graphics", "TrianglesEnd without begin, skipped");
+		return;
+	}
 	FlushVertices();
 	m_Drawing = EDrawing::NONE;
 }
 
 void CGraphics_Threaded::QuadsEndKeepVertices()
 {
-	dbg_assert(m_Drawing == EDrawing::QUADS, "called Graphics()->QuadsEndKeepVertices without begin");
+	if(m_Drawing != EDrawing::QUADS)
+	{
+		// Yabloko hotfix: skip a stray end instead of crashing
+		return;
+	}
 	FlushVertices(true);
 	m_Drawing = EDrawing::NONE;
 }
@@ -816,7 +864,11 @@ static unsigned char NormalizeColorComponent(float ColorComponent)
 
 void CGraphics_Threaded::SetColorVertex(const CColorVertex *pArray, size_t Num)
 {
-	dbg_assert(m_Drawing != EDrawing::NONE, "called Graphics()->SetColorVertex without begin");
+	if(m_Drawing == EDrawing::NONE)
+	{
+		// Yabloko hotfix: skip instead of crashing
+		return;
+	}
 
 	for(size_t i = 0; i < Num; ++i)
 	{
@@ -939,7 +991,12 @@ void CGraphics_Threaded::QuadsTex3DDrawTL(const CQuadItem *pArray, int Num)
 
 void CGraphics_Threaded::QuadsDrawFreeform(const CFreeformItem *pArray, int Num)
 {
-	dbg_assert(m_Drawing == EDrawing::QUADS || m_Drawing == EDrawing::TRIANGLES, "called Graphics()->QuadsDrawFreeform without begin");
+	if(m_Drawing != EDrawing::QUADS && m_Drawing != EDrawing::TRIANGLES)
+	{
+		// Yabloko hotfix: skip the draw instead of crashing on the loading screen
+		dbg_msg("graphics", "QuadsDrawFreeform without begin, skipped");
+		return;
+	}
 
 	if((g_Config.m_GfxQuadAsTriangle && !m_GLUseTrianglesAsQuad) || m_Drawing == EDrawing::TRIANGLES)
 	{
