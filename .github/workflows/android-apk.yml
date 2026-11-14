@@ -19,6 +19,29 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Check ddnet-libs (arm64 prebuilt libs)
+        run: |
+          missing=0
+          for f in \
+            ddnet-libs/curl/android/libarm64/libcurl.a \
+            ddnet-libs/boringssl/android/libarm64/libcrypto.a \
+            ddnet-libs/boringssl/android/libarm64/libssl.a \
+            ddnet-libs/freetype/android/libarm64/libfreetype.a \
+            ddnet-libs/png/android/libarm64/libpng16.a \
+            ddnet-libs/opus/android/libarm64/libogg.a \
+            ddnet-libs/opus/android/libarm64/libopus.a \
+            ddnet-libs/opus/android/libarm64/libopusfile.a \
+            ddnet-libs/sdl/android/libarm64/libSDL2.a \
+            ddnet-libs/sqlite3/android/libarm64/libsqlite3.a \
+            ddnet-libs/wavpack/android/libarm64/libwavpack.a; do
+            if [ ! -f "$f" ]; then echo "MISSING: $f"; missing=1; fi
+          done
+          if [ "$missing" = 1 ]; then
+            echo "::error::ddnet-libs не скачался: нет прекомпилированных arm64-библиотек (проверь gitlink сабмодуля)"
+            exit 1
+          fi
+          echo "ddnet-libs: все arm64-библиотеки на месте"
+
       - name: Validate Gradle Wrapper
         uses: gradle/actions/wrapper-validation@v5
 
@@ -37,7 +60,7 @@ jobs:
           # файлы из репо могут быть без бита исполнения - чиним и зовём через bash
           find scripts -name '*.sh' -exec chmod +x {} +
           chmod +x scripts/android/files/gradlew
-          bash scripts/android/download_android_sdk.sh /home/runner             || { sleep 15; bash scripts/android/download_android_sdk.sh /home/runner; }
+          bash scripts/android/download_android_sdk.sh /home/runner || { sleep 15; bash scripts/android/download_android_sdk.sh /home/runner; }
 
       - name: Install Vulkan SDK
         uses: humbletim/install-vulkan-sdk@v1.2
@@ -68,4 +91,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "yabloko-v${GITHUB_RUN_NUMBER}" artifacts/Yabloko.apk             --title "Yabloko APK v${GITHUB_RUN_NUMBER} (arm64)"             --notes "Автосборка Yabloko (DDNet) для Android. Только 64-бит (arm64-v8a)."           || gh release upload "yabloko-v${GITHUB_RUN_NUMBER}" artifacts/Yabloko.apk --clobber
+          gh release create "yabloko-v${GITHUB_RUN_NUMBER}" artifacts/Yabloko.apk \
+            --title "Yabloko APK v${GITHUB_RUN_NUMBER} (arm64)" \
+            --notes "Автосборка Yabloko (DDNet) для Android. Только 64-бит (arm64-v8a)." \
+          || gh release upload "yabloko-v${GITHUB_RUN_NUMBER}" artifacts/Yabloko.apk --clobber
