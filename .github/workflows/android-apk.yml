@@ -1,0 +1,71 @@
+name: Android APK (arm64)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      CARGO_HTTP_MULTIPLEXING: false
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - name: Validate Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@v5
+
+      - name: Prepare Linux
+        run: |
+          sudo apt-get update -y -o Acquire::Retries=5
+          sudo apt-get install -y -o Acquire::Retries=5 ninja-build openjdk-21-jdk openssl
+          curl -fL --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 -o cmake.tar.gz https://github.com/Kitware/CMake/releases/download/v3.22.1/cmake-3.22.1-Linux-x86_64.tar.gz
+          mkdir -p /home/runner/cmake
+          tar --strip-components 1 -C /home/runner/cmake -xf cmake.tar.gz
+          rustup default 1.92.0
+          export CARGO_NET_RETRY=10
+          export CARGO_HTTP_TIMEOUT=120
+          cargo install cargo-ndk
+          rustup target add aarch64-linux-android
+          # файлы из репо могут быть без бита исполнения - чиним и зовём через bash
+          find scripts -name '*.sh' -exec chmod +x {} +
+          chmod +x scripts/android/files/gradlew
+          bash scripts/android/download_android_sdk.sh /home/runner             || { sleep 15; bash scripts/android/download_android_sdk.sh /home/runner; }
+
+      - name: Install Vulkan SDK
+        uses: humbletim/install-vulkan-sdk@v1.2
+        with:
+          version: 1.3.296.0
+          cache: true
+
+      - name: Build Android app (arm64-v8a only)
+        run: |
+          export TW_KEY_NAME=/home/runner/Yabloko.jks
+          export TW_KEY_ALIAS=Yabloko-Key
+          export TW_KEY_PW="$(openssl rand -base64 32)"
+          keytool -genkey -v -keystore "$TW_KEY_NAME" -keyalg RSA -keysize 2048 -validity 10000 -alias "$TW_KEY_ALIAS" -storepass "$TW_KEY_PW" -dname "CN=Yabloko, OU=Yabloko, O=Yabloko"
+          export ANDROID_HOME="/home/runner/Android/Sdk"
+          unset ANDROID_SDK_ROOT
+          export PATH=/home/runner/cmake/bin:$PATH
+          bash scripts/android/cmake_android.sh arm64 DDNet com.altynekst.yabloko Release build-android-release
+          mkdir -p artifacts
+          mv build-android-release/DDNet.apk artifacts/Yabloko.apk
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: Yabloko-android
+          path: artifacts
+
+      - name: Create Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "yabloko-v${GITHUB_RUN_NUMBER}" artifacts/Yabloko.apk             --title "Yabloko APK v${GITHUB_RUN_NUMBER} (arm64)"             --notes "Автосборка Yabloko (DDNet) для Android. Только 64-бит (arm64-v8a)."           || gh release upload "yabloko-v${GITHUB_RUN_NUMBER}" artifacts/Yabloko.apk --clobber
